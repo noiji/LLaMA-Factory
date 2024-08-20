@@ -128,3 +128,35 @@ class ComputeSimilarity:
 
         if compute_result:
             return self._dump()
+
+
+@dataclass
+class LogEvalPrediction:
+    tokenizer: "PreTrainedTokenizer"
+
+    def _dump(self) -> Optional[Dict[str, float]]:
+        result = None
+        if hasattr(self, "score_dict"):
+            result = {k: float(np.mean(v)) for k, v in self.score_dict.items()}
+
+        self.score_dict = {"input": [], "prediction": [], "reference": []}
+        return result
+
+    def __post_init__(self):
+        self._dump()
+
+    def __call__(self, eval_preds: "EvalPrediction") -> Optional[Dict[str, float]]:
+        preds, labels, inputs = numpify(eval_preds.predictions), numpify(eval_preds.label_ids), numpify(eval_preds.inputs)
+
+        preds = np.where(preds != IGNORE_INDEX, preds, self.tokenizer.pad_token_id)
+        labels = np.where(labels != IGNORE_INDEX, labels, self.tokenizer.pad_token_id)
+        inputs = np.where(inputs != IGNORE_INDEX, inputs, self.tokenizer.pad_token_id)
+
+        decoded_preds = self.tokenizer.batch_decode(preds, skip_special_tokens=True)
+        decoded_labels = self.tokenizer.batch_decode(labels, skip_special_tokens=True)
+        decoded_inputs = self.tokenizer.batch_decode(inputs, skip_special_tokens=True)
+
+        for idx, (pred, ref, inp) in enumerate(zip(decoded_preds, decoded_labels, decoded_inputs)):
+            self.score_dict["input"].append(inp)
+            self.score_dict["prediction"].append(pred)
+            self.score_dict["reference"].append(ref)
